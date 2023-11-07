@@ -48,11 +48,14 @@ int main() {
     client_addr_to.sin_addr.s_addr = inet_addr(LOCAL_HOST);
     client_addr_to.sin_port = htons(CLIENT_PORT_TO);
 
+    // Open the target file for writing (always write to output.txt)
+    FILE *fp = fopen("output.txt", "wb");
 
     // TODO: Receive file from the client and save it as output.txt
 
     
 
+    fclose(fp);
     close(listen_sockfd);
     close(send_sockfd);
     return 0;
