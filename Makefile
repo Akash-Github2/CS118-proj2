@@ -10,7 +10,7 @@ build: server.c client.c
 	gcc -Wall -Wextra -o client client.c
 
 clean:
-	rm -f server client output.txt
+	rm -f server client output.txt project2.zip
 
-zip: clean
-	zip ${USERID}.zip server.c client.c Makefile
+zip: 
+	zip project2.zip server.c client.c utils.h Makefile README
