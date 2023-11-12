@@ -99,7 +99,7 @@ Students are allowed and encouraged to modify the provided skeleton code and `ut
 
 ## Submission
 
-Please compress your modified `server.c`, `client.c`, and `Makefile` into a zip file using the following command:
+Please compress your modified `utils.h` `server.c`, `client.c`, `report.txt`, and `Makefile` into a zip file using the following command:
 
 ```sh
 make zip
