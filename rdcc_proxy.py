@@ -65,6 +65,9 @@ def producer(bucket, listen_port):
         print(f'Listening on port {listen_port}...')
         while True:
             data, addr = s.recvfrom(4096)
+            if len(data) > 1200:
+                # drop oversized packets
+                continue
             # print(f'Packet received: {data}')
             success = bucket.enqueue(data)
             # if success:
@@ -72,14 +75,18 @@ def producer(bucket, listen_port):
             # else:
             #     print(f'Packet dropped: {data}')
 
+def delayed_send(data, addr, port, delay):
+    time.sleep(delay)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.sendto(data, (addr, port))
             
 def consumer(bucket, forward_port):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         while True:
             data = bucket.dequeue()
             if data:
-                s.sendto(data, ('localhost', forward_port))
-                # print(f'Packet forwarded: {data}')  
+                # print(f'Packet dequeued: {data}, queue size: {bucket.q.qsize()}')
+                threading.Thread(target=delayed_send, args=(data, 'localhost', forward_port, args.prop_delay)).start()
 
 
 def forward_packets(listen_port, forward_port, test_type):
@@ -90,6 +97,9 @@ def forward_packets(listen_port, forward_port, test_type):
             print(f'Listening on port {listen_port}...')
             while True:
                 data, addr = s.recvfrom(4096)
+                if len(data) > 1200:
+                    # drop oversized packets
+                    continue
                 if tunnel.forward_success():
                     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as forward_socket:
                         forward_socket.sendto(data, ('localhost', forward_port))
@@ -116,10 +126,11 @@ if __name__ == '__main__':
     parser.add_argument('--server_port', '-s', type=int, default=6002)
     parser.add_argument('--test_type', '-t', type=str, choices=['rd', 'cc'], default='rd')
     parser.add_argument('--loss_rate', '-l', type=float, default=0.1)
-    parser.add_argument('--token_rate', '-k', type=int, default=10)
-    parser.add_argument('--token_capacity', '-b', type=int, default=100)
-    parser.add_argument('--queue_size', '-q', type=int, default=100)
+    parser.add_argument('--token_rate', '-k', type=int, default=100)
+    parser.add_argument('--token_capacity', '-b', type=int, default=1)
+    parser.add_argument('--queue_size', '-q', type=int, default=30)
     parser.add_argument('--random_seed', '-r', type=int, default=0)
+    parser.add_argument('--prop_delay', '-p', type=float, default=0.1)
     
     args = parser.parse_args()
     main()
