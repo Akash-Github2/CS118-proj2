@@ -49,6 +49,7 @@ Options:
 - `--token_capacity <capacity>`: The capacity of the TokenBucket in 'cc' mode.
 - `--queue_size <size>`: The maximum size of the queue in 'cc' mode.
 - `--random_seed <seed>`: The random seed for packet loss simulation.
+- `--prop_delay <delay>`: The propagation delay in seconds.
 
 Example:
 
@@ -56,7 +57,7 @@ Example:
 python rdcc_proxy.py --test_type rd --loss_rate 0.1
 ```
 
-For testing purposes, you may want to adjust the parameters such as loss rate or token bucket rate. Ensure that both the client and server programs are working as expected under different network conditions.
+For testing purposes, you may want to adjust the parameters such as loss rate or token rate. The default values are only for reference. We may use different values for grading.
 
 ### Running the Client and Server
 
@@ -69,10 +70,8 @@ First, run the server:
 Then, in a separate terminal, run the client providing the filename to upload:
 
 ```sh
-./client <filename>
+./client input.txt
 ```
-
-Replace `<filename>` with the path to the file you want to transfer.
 
 ## Project Tasks
 
