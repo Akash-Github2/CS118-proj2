@@ -84,8 +84,9 @@ int main() {
 
     /* ----- START IMPLEMENTATION ----- */
     string fileContent = "";
-    map<unsigned short, packet> payloadMap; // seqNum -> packet
-    map<unsigned short, packet> finOutput;
+    map<unsigned short, packet> serverBuffer; // seqNum -> packet
+    int lastContiguous = 0;
+    int largestReceived = 0;
     unordered_set<int> received;
 
     while (true) {
@@ -95,42 +96,45 @@ int main() {
             perror("Received failed");
             continue;
         }
+        cout << "Received seqNum: " << buffer.seqnum << endl;
 
         // Last packet
         if (buffer.last == 1) break;
 
-        // printRecv(&buffer); // PRINT
-        if (received.find(buffer.seqnum) == received.end()) { // New packet
-            received.insert(buffer.seqnum);
-            finOutput.insert({buffer.seqnum, buffer});
-        }
-        payloadMap.insert({buffer.seqnum, buffer});
-        
-        // SEND ACK (sends ack for minimum packet & erases it from buffer)
-        if (payloadMap.size() > 0) {
-            unsigned short minElement = payloadMap.begin()->first;
-            build_packet(&ack_pkt, 0, minElement, 0, 1, sizeof(ack_pkt), "");
+        largestReceived = max(largestReceived, (int)buffer.seqnum);
 
-            // cout << "Min Element ACK:::" << minElement << "Buff.last: " << buffer.last << endl;
-            ssize_t bytes_sent = sendto(send_sockfd, &ack_pkt, sizeof(ack_pkt), 0, (struct sockaddr*)&client_addr_to, sizeof(client_addr_to));
-            if (bytes_sent == -1) {
-                perror("Send failed");
-            } else {
-                payloadMap.erase(minElement);
+        // New packet
+        if (received.find(buffer.seqnum) == received.end()) {
+            received.insert(buffer.seqnum);
+            serverBuffer.insert({buffer.seqnum, buffer});
+
+            // Update last contiguously received packet
+            for (int i = lastContiguous; i <= largestReceived; i++) {
+                if (serverBuffer.find(i) == serverBuffer.end())
+                    break;
+                lastContiguous = i;
             }
+        }
+        
+        // SEND ACK (sends ack for last contiguously received packet)
+        build_packet(&ack_pkt, 0, lastContiguous + 1, 0, 1, sizeof(ack_pkt), "");
+        cout << "ACK'd " << lastContiguous + 1 << endl;
+        ssize_t bytes_sent = sendto(send_sockfd, &ack_pkt, sizeof(ack_pkt), 0, (struct sockaddr*)&client_addr_to, sizeof(client_addr_to));
+        if (bytes_sent == -1) {
+            perror("Send failed");
         }
     }
 
     struct packet finack;
     build_packet(&finack, 0, 0, 1, 1, 0, "");
-    for (int i = 0; i < 50; i++) {
+    for (int i = 0; i < 10; i++) {
         ssize_t finack_sent = sendto(send_sockfd, &finack, sizeof(finack), 0, (struct sockaddr*)&client_addr_to, sizeof(client_addr_to));
         if (finack_sent == -1) {
             perror("Send failed");
         }
     }
 
-    for (auto it : finOutput) {
+    for (auto it : serverBuffer) {
         for (int i = 0; i < it.second.length; ++i)
             output_file << it.second.payload[i];
     }
