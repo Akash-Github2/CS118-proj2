@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <bits/stdc++.h>
 #include <map>
+#include <unordered_map>
 #include <iostream>
 #include <fstream>
 #include "utils.h"
@@ -115,42 +116,46 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    unordered_map<int, int> timesSent;
     /* ---------- SENDING PACKETS ---------- */
-    while(true) {
+    while (true) {
         // Send until cwnd full
         while (currWindow.size() < windowSize) {
-            // cout << "CURR: Seq num: " << seq_num << " Min El: " << minElement << endl;
             if (seqNumToPacket.size() > 0) {
                 struct packet minOverallPkt = seqNumToPacket.begin()->second;
+                timesSent.insert({minOverallPkt.seqnum, 1});
                 transmitPacket(send_sockfd, &minOverallPkt, &server_addr_to); // Transmit packet to server
                 currWindow.insert({minOverallPkt.seqnum, minOverallPkt}); // Add packet to cwnd
                 seqNumToPacket.erase(minOverallPkt.seqnum); // Remove ack'd packet from overall seqNumToPacket
             } else break; // EOF
+            // cout << "[In send] CWND: " << currWindow.size() << ", WindowSize: " << windowSize << endl;
         }
+        // cout << "CWND: " << currWindow.size() << ", WindowSize: " << windowSize << endl;
 
         if (seqNumToPacket.size() == 0) // No more unqueued packets
             break;
 
         if (receiveAck(listen_sockfd, &ack_pkt, &client_addr, addr_size)) {
-            // cout << "Received ack from server: Num " << ack_pkt.acknum << "\n";
             currWindow.erase(ack_pkt.acknum); // Remove ack'd packet from cwnd
-        } else {
-            // cout << "RETRANSMIT MIN:::\n";
-            struct packet minWindowPkt = currWindow.begin()->second;
-            transmitPacket(send_sockfd, &minWindowPkt, &server_addr_to);
+            timesSent.erase(ack_pkt.acknum);
+            windowSize++; // Additive Increase
+        }
+        struct packet minWindowPkt = currWindow.begin()->second;
+        transmitPacket(send_sockfd, &minWindowPkt, &server_addr_to);
+        timesSent[minWindowPkt.seqnum]++;
+        if (timesSent[minWindowPkt.seqnum] > 3) {
+            timesSent[minWindowPkt.seqnum] = 0;
+            windowSize = max(windowSize/2, 1);
         }
     }
 
     // Receive or retransmit anything from window
     while (currWindow.size() > 0) {
-
         if (receiveAck(listen_sockfd, &ack_pkt, &client_addr, addr_size)) {
             currWindow.erase(ack_pkt.acknum); // Remove ack'd packet from cwnd
-        } else { // RETRANSMIT MIN
-            struct packet minWindowPkt = currWindow.begin()->second;
-            // printRecv(&minWindowPkt);
-            transmitPacket(send_sockfd, &minWindowPkt, &server_addr_to);
         }
+        struct packet minWindowPkt = currWindow.begin()->second;
+        transmitPacket(send_sockfd, &minWindowPkt, &server_addr_to);
     }
 
     // Transmit end packet after everything else is already transmitted and received
@@ -159,7 +164,7 @@ int main(int argc, char *argv[]) {
 
     while (true) {
         transmitPacket(send_sockfd, &end_pkt, &server_addr_to);
-        if (receiveAck(listen_sockfd, &ack_pkt, &client_addr, addr_size))
+        if (receiveAck(listen_sockfd, &ack_pkt, &client_addr, addr_size) && ack_pkt.last)
             break;
     }
 

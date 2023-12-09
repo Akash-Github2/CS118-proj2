@@ -11,6 +11,8 @@
 #include <bits/stdc++.h>
 #include "utils.h"
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <algorithm>
 #include <iostream>
@@ -84,6 +86,7 @@ int main() {
     string fileContent = "";
     map<unsigned short, packet> payloadMap; // seqNum -> packet
     map<unsigned short, packet> finOutput;
+    unordered_set<int> received;
 
     while (true) {
         // RECEIVE PACKET
@@ -93,18 +96,17 @@ int main() {
             continue;
         }
 
-        // Last flag on
+        // Last packet
         if (buffer.last == 1) break;
 
-        // cout << "Received message from client: Ack:" << buffer.acknum << " Seqnum:" << buffer.seqnum << "\n";
-        // cout << "Received Packet Payload: " << buffer.payload << endl;
-
-        // cout << "RECEIVED: " << buffer.length << ":::" << buffer.payload << endl;
-        printRecv(&buffer);
-        finOutput.insert({buffer.seqnum, buffer});
+        // printRecv(&buffer); // PRINT
+        if (received.find(buffer.seqnum) == received.end()) { // New packet
+            received.insert(buffer.seqnum);
+            finOutput.insert({buffer.seqnum, buffer});
+        }
         payloadMap.insert({buffer.seqnum, buffer});
         
-        // SEND ACK
+        // SEND ACK (sends ack for minimum packet & erases it from buffer)
         if (payloadMap.size() > 0) {
             unsigned short minElement = payloadMap.begin()->first;
             build_packet(&ack_pkt, 0, minElement, 0, 1, sizeof(ack_pkt), "");
@@ -116,6 +118,15 @@ int main() {
             } else {
                 payloadMap.erase(minElement);
             }
+        }
+    }
+
+    struct packet finack;
+    build_packet(&finack, 0, 0, 1, 1, 0, "");
+    for (int i = 0; i < 50; i++) {
+        ssize_t finack_sent = sendto(send_sockfd, &finack, sizeof(finack), 0, (struct sockaddr*)&client_addr_to, sizeof(client_addr_to));
+        if (finack_sent == -1) {
+            perror("Send failed");
         }
     }
 
