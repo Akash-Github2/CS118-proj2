@@ -30,7 +30,7 @@ struct packet {
 };
 
 // Utility function to build a packet
-void build_packet(struct packet* pkt, unsigned short seqnum, unsigned short acknum, char last, char ack,unsigned int length, const char* payload) {
+void build_packet(struct packet* pkt, unsigned short seqnum, unsigned short acknum, char last, char ack, unsigned int length, const char* payload) {
     pkt->seqnum = seqnum;
     pkt->acknum = acknum;
     pkt->ack = ack;

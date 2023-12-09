@@ -10,6 +10,8 @@
 #include <sys/socket.h>
 #include <bits/stdc++.h>
 #include <map>
+#include <iostream>
+#include <fstream>
 #include "utils.h"
 
 using namespace std;
@@ -79,113 +81,86 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    //Open file for reading (C++)
-    ifstream file("input.txt", ios::binary);
+    // Open file for reading (C++)
+    ifstream file(argv[1], ios::binary);
     if (!file.is_open()) {
         cerr << "Error opening file" << endl;
         return 1;
     }
 
-
-
-    // TODO: Read from file, and initiate reliable data transfer to the server
-
+    /* ------ BEGIN IMPLEMENTATION ------ */
     const int payloadSize = 200;
-    map<unsigned short, packet> currWindow; // seqNum : payload
+    map<unsigned short, packet> currWindow; // seqNum -> payload
     int windowSize = 8;
     
     map<unsigned short, packet> seqNumToPacket; //remove once it gets successfully transmitted
     int seqNum = 0;
     
-    //------PREPROCESSING TO LOAD ALL PACKETS INTO 'seqNumToPacket'------//
+    /* ------ PREPROCESSING: LOAD ALL PACKETS INTO 'seqNumToPacket' ------ */
     while (!file.eof()) {
 
         file.read(buffer, payloadSize);
         streamsize bytesRead = file.gcount();
 
-        if (bytesRead > 0) {
+        if (bytesRead > 0) { // Build packet from string read in, add it into map w/ seqNum
             struct packet currPkt;
-            // Assuming you want to store the content as a string, you can modify this based on your requirements.
-            
             string block(buffer, bytesRead);
 
-            // Map the sequence number to the block of 10 bytes
+            // packet, seqNum, ackNum, lastFlag, ackFlag, length, *payload
             build_packet(&currPkt, seqNum, ack_num, 0, 0, bytesRead, block.c_str());
+            // Map the sequence number to the block of 10 bytes
             seqNumToPacket[seqNum] = currPkt;
             // Increment the sequence number
             seqNum++;
         }
     }
 
-    //--------------------//
-
-    // printPacketMap(seqNumToPacket);
-
+    /* ---------- SENDING PACKETS ---------- */
     while(true) {
-        // printPacketMap(currWindow);
-
-        /* ---------- SENDING PACKET ---------- */
+        // Send until cwnd full
         while (currWindow.size() < windowSize) {
             // cout << "CURR: Seq num: " << seq_num << " Min El: " << minElement << endl;
-
             if (seqNumToPacket.size() > 0) {
-                struct packet minOverallPkt = seqNumToPacket.begin()->second; //need to check if it's empty before
-                // printPacketMap(seqNumToPacket);
-                // cout << "TRANSMITTING::: Min overall packet: " << minOverallPkt.seqnum << " :: " << minOverallPkt.length << " ::: " << minOverallPkt.payload << "::::\n";
+                struct packet minOverallPkt = seqNumToPacket.begin()->second;
                 transmitPacket(send_sockfd, &minOverallPkt, &server_addr_to); // Transmit packet to server
                 currWindow.insert({minOverallPkt.seqnum, minOverallPkt}); // Add packet to cwnd
-                seqNumToPacket.erase(minOverallPkt.seqnum ); //Remove ack'd packet from overall seqNumToPacket
-            } else { // EOF case
-                break;
-            }
+                seqNumToPacket.erase(minOverallPkt.seqnum); // Remove ack'd packet from overall seqNumToPacket
+            } else break; // EOF
         }
 
-        if (seqNumToPacket.size() == 0) {
+        if (seqNumToPacket.size() == 0) // No more unqueued packets
             break;
-        }
-
-        if (currWindow.size() == windowSize) {
-            
-            if (receiveAck(listen_sockfd, &ack_pkt, &client_addr, addr_size)) {
-                // cout << "Received ack from server: Num " << ack_pkt.acknum << "\n";
-                currWindow.erase(ack_pkt.acknum); // Remove ack'd packet from cwnd
-                
-            } else { 
-                /* ---------- RETRANSMIT PACKET ---------- */
-                
-                // cout << "RETRANSMIT:::\n";
-                struct packet minWindowPkt = currWindow.begin()->second;
-                // printRecv(&minWindowPkt);
-                transmitPacket(send_sockfd, &minWindowPkt, &server_addr_to);
-            }
-        }
-    }
-
-    //Receive or retransmit anything from window
-    while (currWindow.size() > 0) {
 
         if (receiveAck(listen_sockfd, &ack_pkt, &client_addr, addr_size)) {
-            
+            // cout << "Received ack from server: Num " << ack_pkt.acknum << "\n";
             currWindow.erase(ack_pkt.acknum); // Remove ack'd packet from cwnd
-            // seqNumToPacket.erase(ack_pkt.acknum); //Remove ack'd packet from overall seqNumToPacket
-        } else { 
-            /* ---------- RETRANSMIT PACKET ---------- */
+        } else {
+            // cout << "RETRANSMIT MIN:::\n";
             struct packet minWindowPkt = currWindow.begin()->second;
-            printRecv(&minWindowPkt);
             transmitPacket(send_sockfd, &minWindowPkt, &server_addr_to);
         }
     }
 
-    //Transmit end packet after everything else is already transmitted and received
+    // Receive or retransmit anything from window
+    while (currWindow.size() > 0) {
+
+        if (receiveAck(listen_sockfd, &ack_pkt, &client_addr, addr_size)) {
+            currWindow.erase(ack_pkt.acknum); // Remove ack'd packet from cwnd
+        } else { // RETRANSMIT MIN
+            struct packet minWindowPkt = currWindow.begin()->second;
+            // printRecv(&minWindowPkt);
+            transmitPacket(send_sockfd, &minWindowPkt, &server_addr_to);
+        }
+    }
+
+    // Transmit end packet after everything else is already transmitted and received
     struct packet end_pkt;
     build_packet(&end_pkt, 0, 0, 1, 0, 0, "");
 
     while (true) {
         transmitPacket(send_sockfd, &end_pkt, &server_addr_to);
-
-        if (receiveAck(listen_sockfd, &ack_pkt, &client_addr, addr_size)) {
+        if (receiveAck(listen_sockfd, &ack_pkt, &client_addr, addr_size))
             break;
-        }
     }
 
     file.close();

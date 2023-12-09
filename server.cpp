@@ -13,6 +13,8 @@
 #include <map>
 #include <vector>
 #include <algorithm>
+#include <iostream>
+#include <fstream>
 
 using namespace std;
 
@@ -78,22 +80,22 @@ int main() {
         return 1;
     }
 
+    /* ----- START IMPLEMENTATION ----- */
     string fileContent = "";
-    map<unsigned short, packet> payloadMap;
+    map<unsigned short, packet> payloadMap; // seqNum -> packet
     map<unsigned short, packet> finOutput;
 
-    while (1) {
-        // cout << "START:\n";
-        //RECEIVING PACKET
+    while (true) {
+        // RECEIVE PACKET
         ssize_t bytes_received = recvfrom(listen_sockfd, &buffer, sizeof(buffer), 0, (struct sockaddr*)&client_addr_from, &addr_size);
         if (bytes_received <= 0) {
             perror("Received failed");
             continue;
         }
 
-        if (buffer.last == 1) {
-            break;
-        }
+        // Last flag on
+        if (buffer.last == 1) break;
+
         // cout << "Received message from client: Ack:" << buffer.acknum << " Seqnum:" << buffer.seqnum << "\n";
         // cout << "Received Packet Payload: " << buffer.payload << endl;
 
@@ -102,11 +104,9 @@ int main() {
         finOutput.insert({buffer.seqnum, buffer});
         payloadMap.insert({buffer.seqnum, buffer});
         
-        //SENDING ACK
+        // SEND ACK
         if (payloadMap.size() > 0) {
-
             unsigned short minElement = payloadMap.begin()->first;
-
             build_packet(&ack_pkt, 0, minElement, 0, 1, sizeof(ack_pkt), "");
 
             // cout << "Min Element ACK:::" << minElement << "Buff.last: " << buffer.last << endl;
@@ -114,23 +114,14 @@ int main() {
             if (bytes_sent == -1) {
                 perror("Send failed");
             } else {
-                // cout << "Sent ack to client: Ack Num\n";
                 payloadMap.erase(minElement);
             }
-
         }
     }
 
-    // printPacketMap(finOutput);
-
-    // cout << finOutput.begin()->second.payload << endl;
-
-    for (auto it = finOutput.begin(); it != finOutput.end(); ++it) {
-        for (int i = 0; i < it->second.length; ++i) {
-            output_file << it->second.payload[i];
-        }
-
-        // output_file << it->second.payload;
+    for (auto it : finOutput) {
+        for (int i = 0; i < it.second.length; ++i)
+            output_file << it.second.payload[i];
     }
 
     output_file.close();
