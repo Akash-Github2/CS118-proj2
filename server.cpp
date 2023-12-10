@@ -21,12 +21,12 @@
 using namespace std;
 
 void printPacketMap(map<unsigned short, packet> currWindow) {
-    // cout << "\n{";
+    // //cout << "\n{";
     // for (auto it = currWindow.begin(); it != currWindow.end(); ++it) {
-    //     cout << it->first << ": " << it->second.payload << " ::: ";
+    //     //cout << it->first << ": " << it->second.payload << " ::: ";
     //     printRecv(&it->second);
     // }
-    // cout << "}\n";
+    // //cout << "}\n";
 }
 
 int main() {
@@ -73,7 +73,7 @@ int main() {
 
     // TODO: Receive file from the client and save it as output.txt
 
-    // cout << "server: testing..." << endl;
+    // //cout << "server: testing..." << endl;
 
     ofstream output_file("output.txt");
     if (!output_file.is_open()) {
@@ -91,15 +91,15 @@ int main() {
 
     while (true) {
         // RECEIVE PACKET
-        cout << "A\n";
+        //cout << "A\n";
         ssize_t bytes_received = recvfrom(listen_sockfd, &buffer, sizeof(buffer), 0, (struct sockaddr*)&client_addr_from, &addr_size);
         if (bytes_received <= 0) {
             perror("Received failed");
             continue;
         }
-        cout << "Received seqNum: " << buffer.seqnum << endl;
+        //cout << "Received seqNum: " << buffer.seqnum << endl;
 
-        cout << "B\n";
+        //cout << "B\n";
 
         // Last packet
         if (buffer.last == 1) break;
@@ -119,22 +119,22 @@ int main() {
             }
         }
 
-        cout << "C\n";
+        //cout << "C\n";
 
-        cout << "[";
-        for (auto i : serverBuffer)
-            cout << i.first << ", ";
-        cout << "]" << endl;
+        //cout << "[";
+        // for (auto i : serverBuffer)
+            //cout << i.first << ", ";
+        //cout << "]" << endl;
         
         // SEND ACK (sends ack for last contiguously received packet)
-        cout << "D\n";
+        //cout << "D\n";
         build_packet(&ack_pkt, 0, lastContiguous + 1, 0, 1, sizeof(ack_pkt), "");
-        cout << "ACK'd " << lastContiguous + 1 << endl;
+        //cout << "ACK'd " << lastContiguous + 1 << endl;
         ssize_t bytes_sent = sendto(send_sockfd, &ack_pkt, sizeof(ack_pkt), 0, (struct sockaddr*)&client_addr_to, sizeof(client_addr_to));
         if (bytes_sent == -1) {
             perror("Send failed");
         }
-        cout << "E\n";
+        //cout << "E\n";
     }
 
     struct packet finack;
@@ -146,10 +146,20 @@ int main() {
         }
     }
 
+    // for (auto it : serverBuffer) {
+    //     for (int i = 0; i < it.second.length; ++i)
+    //         output_file << it.second.payload[i];
+    // }
+
+    string finFileOutput;
+
     for (auto it : serverBuffer) {
-        for (int i = 0; i < it.second.length; ++i)
-            output_file << it.second.payload[i];
+        for (int i = 0; i < it.second.length; ++i) {
+            finFileOutput += it.second.payload[i];
+        }
     }
+
+    output_file << finFileOutput;
 
     output_file.close();
     close(listen_sockfd);

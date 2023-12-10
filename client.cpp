@@ -92,7 +92,7 @@ int main(int argc, char *argv[]) {
     }
 
     /* ------ BEGIN IMPLEMENTATION ------ */
-    const int payloadSize = 200;
+    const int payloadSize = PAYLOAD_SIZE;
     map<unsigned short, packet> currWindow; // seqNum -> payload
     int windowSize = 1;
     
@@ -121,59 +121,83 @@ int main(int argc, char *argv[]) {
     unordered_map<int, int> dupAcks;
     int ssthresh = 8;
     int it = 1;
+    map<chrono::steady_clock::time_point, unsigned short> rtoToSeqNum; //time packet was sent
+    chrono::milliseconds rtoTimeout(500);
     /* ---------- SENDING PACKETS ---------- */
+
     while (true) {
-        cout << "[";
-        for (auto i : currWindow)
-            cout << i.first << ", ";
-        cout << "]" << endl;
-        cout << "A\n";
+        //cout << "[";
+        // for (auto i : currWindow)
+            //cout << i.first << ", ";
+        //cout << "]" << endl;
+        //cout << "A\n";
         // Send until cwnd full
         while (currWindow.size() < windowSize && seqNumToPacket.size() > 0) {
+            it = 0;
             // this_thread::sleep_for(chrono::milliseconds(100));
             struct packet minOverallPkt = seqNumToPacket.begin()->second;
             transmitPacket(send_sockfd, &minOverallPkt, &server_addr_to); // Transmit packet to server
+            rtoToSeqNum.insert({chrono::steady_clock::now(), minOverallPkt.seqnum}); //add rto timeout for packet
             currWindow.insert({minOverallPkt.seqnum, minOverallPkt}); // Add packet to cwnd
             seqNumToPacket.erase(minOverallPkt.seqnum); // Remove ack'd packet from overall seqNumToPacket
-            cout << "[Sent " << minOverallPkt.seqnum << "] CWND: " << currWindow.size() << ", WindowSize: " << windowSize << endl;
+            //cout << "[Sent " << minOverallPkt.seqnum << "] CWND: " << currWindow.size() << ", WindowSize: " << windowSize << endl;
         }
-        cout << "B\n";
+        //cout << "B\n";
         if (currWindow.size() == 0)  // All packet sent & ack'd
             break;
-        cout << "C\n";
-        if (it % max(windowSize*2, 15) == 0) {
-            // Send first pkt in cwnd every 4 loops
-            struct packet minWindowPkt = currWindow.begin()->second;
-            transmitPacket(send_sockfd, &minWindowPkt, &server_addr_to);
-            cout << "[Sending first: " << minWindowPkt.seqnum << "] CWND: " << currWindow.size() << ", WindowSize: " << windowSize << endl;
-            it = 0;
-        }
-        cout << "D\n";
+        //cout << "C\n";
+
+        //Retransmit packets that timed out
+
+        // if (it % 5 == 0) {
+            if (it % 5 == 0 || (rtoToSeqNum.size() > 0 && chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - rtoToSeqNum.begin()->first) > rtoTimeout)) {
+                it = 0;
+                while (currWindow.find(rtoToSeqNum.begin()->second) == currWindow.end()) {
+                    rtoToSeqNum.erase(rtoToSeqNum.begin());
+                    // continue;
+                } 
+                if (rtoToSeqNum.size() > 0) {
+                    // Send pkt when rto timeout
+                    unsigned short retransmitSeqNum = rtoToSeqNum.begin()->second;
+                    struct packet retransmitPkt = currWindow.at(retransmitSeqNum);
+                    transmitPacket(send_sockfd, &retransmitPkt, &server_addr_to);
+                    //cout << "[Sending RTO: " << retransmitPkt.seqnum << "] CWND: " << currWindow.size() << ", WindowSize: " << windowSize << endl;
+
+                    //Remove current RTO Timeout Key : Val and add new one
+                    rtoToSeqNum.erase(rtoToSeqNum.begin());
+                    rtoToSeqNum.insert({chrono::steady_clock::now(), retransmitSeqNum});
+                }
+            }
+        // }
+        
+        //cout << "D\n";
         if (receiveAck(listen_sockfd, &ack_pkt, &client_addr, addr_size) && ack_pkt.acknum >= currWindow.begin()->first) {
-            cout << "A\n";
+            it = 0;
+            //cout << "A\n";
             for (unsigned short i = currWindow.begin()->first; i < ack_pkt.acknum; i++) {
                 currWindow.erase(i); // Remove start -> ack'd packet
                 dupAcks.erase(i);
             }
-            cout << "[Received Ack " << ack_pkt.acknum << "] CWND: " << currWindow.size() << ", WindowSize: " << windowSize << endl;
+            //cout << "[Received Ack " << ack_pkt.acknum << "] CWND: " << currWindow.size() << ", WindowSize: " << windowSize << endl;
             // New Ack
             if (dupAcks.find(ack_pkt.acknum) == dupAcks.end()) {
                 dupAcks.insert({ack_pkt.acknum, 0});
                 if (windowSize < ssthresh) windowSize *= 2; // Slow start
-                else windowSize = min(windowSize + 1, 30); // Additive Increase
+                else windowSize = min(windowSize + 1, 15); // Additive Increase
             }
             else dupAcks[ack_pkt.acknum]++;
 
-            cout << "E\n";
+            //cout << "E\n";
             // FAST RETRANSMIT
             if (dupAcks[ack_pkt.acknum] >= 3) {
-                cout << "[Fast Retransmitted " << ack_pkt.acknum << "] CWND: " << currWindow.size() << ", WindowSize: " << windowSize << endl;
+                //cout << "[Fast Retransmitted " << ack_pkt.acknum << "] CWND: " << currWindow.size() << ", WindowSize: " << windowSize << endl;
                 ssthresh = max(windowSize/2, 2);
                 windowSize = max(windowSize/2, 1);
-                cout << "F\n";
+                //cout << "F\n";
                 struct packet rt = currWindow[ack_pkt.acknum];
                 transmitPacket(send_sockfd, &rt, &server_addr_to);
-                cout << "G\n";
+                rtoToSeqNum.insert({chrono::steady_clock::now(), rt.seqnum}); //add rto timeout for packet
+                //cout << "G\n";
                 dupAcks[ack_pkt.acknum] = 0;
             }
         }
@@ -182,7 +206,7 @@ int main(int argc, char *argv[]) {
 
     // Receive or retransmit anything from window
     // while (currWindow.size() > 0) {
-    //     cout << "Leftover Retransmitting: " << currWindow.begin()->first << "->" << currWindow.rbegin()->first << endl;
+    //     //cout << "Leftover Retransmitting: " << currWindow.begin()->first << "->" << currWindow.rbegin()->first << endl;
     //     if (receiveAck(listen_sockfd, &ack_pkt, &client_addr, addr_size)) {
     //         currWindow.erase(ack_pkt.acknum); // Remove ack'd packet from cwnd
     //     }
@@ -191,7 +215,7 @@ int main(int argc, char *argv[]) {
     // }
 
     // Transmit end packet after everything else is already transmitted and received
-    cout << "Reached end, transmitting end packet" << endl;
+    //cout << "Reached end, transmitting end packet" << endl;
     struct packet end_pkt;
     build_packet(&end_pkt, 0, 0, 1, 0, 0, "");
 
@@ -209,15 +233,15 @@ int main(int argc, char *argv[]) {
 
 void transmitPacket(int send_sockfd, packet *pkt, struct sockaddr_in *server_addr_to) {
 
-    // cout << "TRANSMITTING...\n";
+    // //cout << "TRANSMITTING...\n";
     ssize_t bytes_sent = sendto(send_sockfd, pkt, sizeof(*pkt), 0, (struct sockaddr*)server_addr_to, sizeof(*server_addr_to));
     if (bytes_sent == -1) {
         perror("Send failed");
     } else {
-        // cout << "Sent message to server: " << pkt->payload << "\n";
+        // //cout << "Sent message to server: " << pkt->payload << "\n";
     }
 
-    // cout << "Packet Sent: " << pkt->payload << endl;
+    // //cout << "Packet Sent: " << pkt->payload << endl;
     // printRecv(pkt);
 }
 
@@ -227,10 +251,10 @@ bool receiveAck(int listen_sockfd, packet *ack_pkt, struct sockaddr_in *client_a
 }
 
 void printPacketMap(map<unsigned short, packet> currWindow) {
-    // cout << "\n{";
+    // //cout << "\n{";
     // for (auto it = currWindow.begin(); it != currWindow.end(); ++it) {
-    //     cout << it->first << ": " << it->second.payload << " ::: ";
+    //     //cout << it->first << ": " << it->second.payload << " ::: ";
     //     printRecv(&it->second);
     // }
-    // cout << "}\n";
+    // //cout << "}\n";
 }
