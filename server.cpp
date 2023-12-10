@@ -91,12 +91,15 @@ int main() {
 
     while (true) {
         // RECEIVE PACKET
+        cout << "A\n";
         ssize_t bytes_received = recvfrom(listen_sockfd, &buffer, sizeof(buffer), 0, (struct sockaddr*)&client_addr_from, &addr_size);
         if (bytes_received <= 0) {
             perror("Received failed");
             continue;
         }
         cout << "Received seqNum: " << buffer.seqnum << endl;
+
+        cout << "B\n";
 
         // Last packet
         if (buffer.last == 1) break;
@@ -115,14 +118,23 @@ int main() {
                 lastContiguous = i;
             }
         }
+
+        cout << "C\n";
+
+        cout << "[";
+        for (auto i : serverBuffer)
+            cout << i.first << ", ";
+        cout << "]" << endl;
         
         // SEND ACK (sends ack for last contiguously received packet)
+        cout << "D\n";
         build_packet(&ack_pkt, 0, lastContiguous + 1, 0, 1, sizeof(ack_pkt), "");
         cout << "ACK'd " << lastContiguous + 1 << endl;
         ssize_t bytes_sent = sendto(send_sockfd, &ack_pkt, sizeof(ack_pkt), 0, (struct sockaddr*)&client_addr_to, sizeof(client_addr_to));
         if (bytes_sent == -1) {
             perror("Send failed");
         }
+        cout << "E\n";
     }
 
     struct packet finack;
